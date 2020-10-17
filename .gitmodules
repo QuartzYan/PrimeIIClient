@@ -1,0 +1,3 @@
+[submodule "depend/CJsonObject"]
+	path = depend/CJsonObject
+	url = https://github.com/QuartzYan/CJsonObject.git
