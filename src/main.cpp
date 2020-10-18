@@ -137,6 +137,11 @@ int main(int argc, char* argv[])
       //send message
       std::vector<PrimeIIDriver::GloveData> gloves = pd.getGlovesData();
       CJsonObject glovesJson = GlovesData2Json(gloves);
+      if(!glovesJson.GetErrMsg().empty())
+      {
+        std::cout << "json decode error:" << glovesJson.GetErrMsg() << std::endl;
+        continue;
+      }
       if (!glovesJson.IsEmpty())
       {
         //std::cout << glovesJson.ToString() << std::endl;
@@ -149,7 +154,7 @@ int main(int argc, char* argv[])
           break;
         }
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     closesocket(sClient);
   }
