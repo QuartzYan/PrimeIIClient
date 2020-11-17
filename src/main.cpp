@@ -33,7 +33,7 @@ CJsonObject GlovesData2Json(std::vector<PrimeIIDriver::GloveData> gloves)
       wristIMU.Add("y", gloves.at(i).wristIMU.y);
       wristIMU.Add("z", gloves.at(i).wristIMU.z);
       wristIMU.Add("w", gloves.at(i).wristIMU.w);
-      
+
 
       CJsonObject fingersFlex;
       for (size_t j = 0; j < gloves.at(i).fingers.fingersFlex.size(); j++)
@@ -57,7 +57,7 @@ CJsonObject GlovesData2Json(std::vector<PrimeIIDriver::GloveData> gloves)
 
         fingersIMU.Add(fingerNames[j], fingerIMU);
       }
-      
+
       CJsonObject fingers;
       fingers.Add("fingersFlex", fingersFlex);
       fingers.Add("fingersIMU", fingersIMU);
@@ -66,7 +66,7 @@ CJsonObject GlovesData2Json(std::vector<PrimeIIDriver::GloveData> gloves)
       gloveJson.Add("fingers", fingers);
 
       std::stringstream stream;
-      stream << "glove" << i+1;
+      stream << "glove" << i + 1;
 
       glovesJson.Add(stream.str(), gloveJson);
     }
@@ -95,6 +95,13 @@ int main(int argc, char* argv[])
     std::cout << "Failed socket()" << std::endl;
     exit(-1);
   }
+  unsigned long ul = 1;
+  int r = ioctlsocket(sockServer, FIONBIO, &ul);
+  if (r == SOCKET_ERROR)
+  {
+    std::cout << "Failed ioctlsocket()" << std::endl;
+    exit(-1);
+  }
   //bind port
   sockaddr_in sin;
   sin.sin_family = AF_INET;
@@ -117,27 +124,41 @@ int main(int argc, char* argv[])
   int nAddrlen = sizeof(remoteAddr);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
   //loop
+  char recvBuf[1024] = { 0, };
   while (!getKeyboard(VK_ESCAPE))
   {
     std::cout << "waiting for connection..." << std::endl;
     sClient = accept(sockServer, (SOCKADDR*)&remoteAddr, &nAddrlen);
-    if (sClient == INVALID_SOCKET)
+    if (sClient == SOCKET_ERROR)
     {
-      std::cout << "accept error !" << std::endl;
-      continue;
+      int err = WSAGetLastError();
+      if (err == WSAEWOULDBLOCK)
+      {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        continue;
+      }
+      else
+      {
+        std::cout << "unknown error!!" << std::endl;
+        break;
+      }
     }
-    char ipBuf[20] = { '\0' };
-    inet_ntop(AF_INET, (void*)&remoteAddr.sin_addr, ipBuf, 16);
-    std::cout << "received a connection:" << ipBuf << std::endl;
-    std::cout << "start send message" << std::endl;
+    else
+    {
+      char ipBuf[20] = { '\0' };
+      inet_ntop(AF_INET, (void*)&remoteAddr.sin_addr, ipBuf, 16);
+      std::cout << "received a connection:" << ipBuf << std::endl;
+      std::cout << "start send message" << std::endl;
+    }
 
     while (!getKeyboard(VK_ESCAPE))
     {
       //send message
       std::vector<PrimeIIDriver::GloveData> gloves = pd.getGlovesData();
       CJsonObject glovesJson = GlovesData2Json(gloves);
-      if(!glovesJson.GetErrMsg().empty())
+      if (!glovesJson.GetErrMsg().empty())
       {
         std::cout << "json decode error:" << glovesJson.GetErrMsg() << std::endl;
         continue;
@@ -154,14 +175,91 @@ int main(int argc, char* argv[])
           break;
         }
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+      //receive message
+      int ret = recv(sClient, recvBuf, 1024, 0);
+      if (ret == SOCKET_ERROR)
+      {
+        int r = WSAGetLastError();
+        if (r == WSAEWOULDBLOCK)
+        {
+          //std::cout << "no message..." << std::endl;
+        }
+        else if (r == WSAENETDOWN)
+        {
+          std::cout << "send error..." << std::endl;
+        }
+      }
+      else if (ret > 0)//success
+      {
+        std::string str(recvBuf);
+        CJsonObject json(str);
+        if (!json.GetErrMsg().empty())
+        {
+          std::cout << "json recode error:" << json.GetErrMsg() << std::endl;
+        }
+        else
+        {
+          if (!json.IsEmpty())
+          {
+            uint32_t dongleId = 0;
+            int jhandtype = 0;
+            PrimeIIDriver::HandType handtype = PrimeIIDriver::HandType::Unknown;
+            std::array<float, 5> powers{};
+
+            CJsonObject powerArray;
+
+            if (json.Get("dongleid", dongleId) && json.Get("handtype", jhandtype) && json.Get("power", powerArray))
+            {
+              switch (jhandtype)
+              {
+              case 1:
+                handtype = PrimeIIDriver::HandType::LeftHand;
+                break;
+              case 2:
+                handtype = PrimeIIDriver::HandType::RightHand;
+                break;
+              default:
+                handtype = PrimeIIDriver::HandType::Unknown;
+                break;
+              }
+
+              if (powerArray.IsArray() && powerArray.GetArraySize() == 5)
+              {
+                for (size_t i = 0; i < 5; i++)
+                {
+                  powerArray.Get(i, powers.at(i));
+                }
+
+                pd.setVibrateFingers(dongleId, handtype, powers);
+              }
+            }
+            else
+            {
+              std::cout << "recv json key error!!!" << std::endl;
+            }
+          }
+        }
+      }
+      else if (ret == 0)
+      {
+        std::cout << "disconnect..." << std::endl;
+        break;
+      }
+      else
+      {
+        std::cout << "recv failed:" << WSAGetLastError() << std::endl;
+      }
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
     closesocket(sClient);
   }
 
   closesocket(sockServer);
   WSACleanup();
+
   pd.stop();
- 
+
   return 0;
 }

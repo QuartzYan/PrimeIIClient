@@ -27,8 +27,8 @@ static const std::array<std::string, JOINTPERFINGERCOUNT> thumbJointNames = { "c
 class PrimeIIDriver
 {
 public:
-
-  enum HandType : int{ Unknown = 0, LeftHand = 1, RightHand = 2};
+   
+  enum HandType : int { Unknown = 0, LeftHand = 1, RightHand = 2};
   
   //struct FingerJointFlex
   //{
@@ -75,6 +75,15 @@ public:
     Fingers  fingers;
     Quaternion wristIMU;
   };
+
+private:
+  struct VibrateFingers
+  {
+    bool sendFlage;
+    uint32_t dongleId;
+    Hermes::Protocol::HandType handtype;
+    std::array<float, 5> powers{};
+  };
   
 public:
   PrimeIIDriver(const std::string& _clientName, const std::string& _clientInfo);
@@ -87,9 +96,9 @@ public:
 
   std::vector<PrimeIIDriver::GloveData> getGlovesData();
   
-  bool setVibrateFingers(PrimeIIDriver::HandType _handtype, const std::array<float, 5>& _powers);
+  bool setVibrateFingers(uint32_t _dongleId, PrimeIIDriver::HandType _handtype, std::array<float, 5> _powers);
 
-protected:
+private:
   std::thread* td;
   bool requestExit;
 
@@ -98,13 +107,13 @@ protected:
   std::mutex m_Landscape_mutex;
   Hermes::Protocol::Hardware::DeviceLandscape m_Landscape;
 
-  std::mutex m_DevicesData_mutex;
+  std::mutex m_DeviceData_mutex;
   moodycamel::ConcurrentQueue<Hermes::Protocol::Devices> m_DevicesData;
 
+  std::mutex m_FingersVibrate_mutex;
+  VibrateFingers m_vf;
   std::chrono::high_resolution_clock::time_point m_timeLastHapticsCmdSent;
 
-
-private:
   //HermesSDK CallBack
   HermesSDK::filterSetupCallback onFilterSetup = [&](Hermes::Protocol::Pipeline& _pipeline)
   {
@@ -124,9 +133,9 @@ private:
   };
   HermesSDK::deviceDataCallback onDeviceData = [&](const Hermes::Protocol::Devices& _data) 
   {
-    m_DevicesData_mutex.lock();
+    m_DeviceData_mutex.lock();
     m_DevicesData.enqueue(_data);
-    m_DevicesData_mutex.unlock();
+    m_DeviceData_mutex.unlock();
   };
   HermesSDK::deviceLandscapeCallback onLandscapeData = [&](const Hermes::Protocol::Hardware::DeviceLandscape& _data)
   {

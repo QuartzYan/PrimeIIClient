@@ -4,6 +4,7 @@ PrimeIIDriver::PrimeIIDriver(const std::string& _clientName, const std::string& 
   :requestExit(false)
 {
   td = NULL;
+  m_vf.sendFlage = false;
   ConnectLocal(_clientName, _clientInfo);
 }
 
@@ -11,6 +12,7 @@ PrimeIIDriver::PrimeIIDriver(const std::string& _clientName, const std::string& 
   : requestExit(false) 
 {
   td = NULL;
+  m_vf.sendFlage = false;
   ConnectNetworkByAddress(_clientName, _clientInfo, _address);
 }
 
@@ -26,34 +28,47 @@ PrimeIIDriver::~PrimeIIDriver()
   }
 }
 
-bool PrimeIIDriver::setVibrateFingers(PrimeIIDriver::HandType _handtype, const std::array<float, 5>& _powers)
+bool PrimeIIDriver::setVibrateFingers(uint32_t _dongleId, PrimeIIDriver::HandType _handtype, const std::array<float, 5> _powers)
 {
-  Hermes::Protocol::HandType handtype;
+  std::lock_guard<std::mutex> lck(m_FingersVibrate_mutex);
+
+  m_vf.sendFlage = false;
+
+  for (size_t i = 0; i < _powers.size(); i++)
+  {
+    if (_powers.at(i) > 1.0)
+    {
+      return false;
+    }
+    else
+    {
+      m_vf.powers.at(i) = _powers.at(i);
+    }
+  }
+
+  m_vf.dongleId = _dongleId;
+ 
   switch (_handtype)
   {
-  case PrimeIIDriver::Unknown:
-    handtype = Hermes::Protocol::HandType::UnknownChirality;
+  case PrimeIIDriver::HandType::LeftHand:
+    m_vf.handtype = Hermes::Protocol::HandType::Left;
     break;
-  case PrimeIIDriver::LeftHand:
-    handtype = Hermes::Protocol::HandType::Left;
-    break;
-  case PrimeIIDriver::RightHand:
-    handtype = Hermes::Protocol::HandType::Right;
+  case PrimeIIDriver::HandType::RightHand:
+    m_vf.handtype = Hermes::Protocol::HandType::Right;
     break;
   default:
+    m_vf.handtype = Hermes::Protocol::HandType::UnknownChirality;
     break;
   }
-  unsigned long long elapsedLastCmd_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - m_timeLastHapticsCmdSent).count();
+  
+  m_vf.sendFlage = true;
 
-  if (elapsedLastCmd_ms > TIMEBETWEENHAPTICSCMDS_MS)
-  {
-    m_timeLastHapticsCmdSent = std::chrono::high_resolution_clock::now();
+  m_timeLastHapticsCmdSent = std::chrono::high_resolution_clock::now();
 
+  //return true;
 
-
-
-    //return HermesSDK::VibrateFingers(tree.id(), handtype, _powers);
-  }
+  //HermesSDK::VibrateWrist(1819774777, 0.5, 20);
+  return HermesSDK::VibrateFingers(_dongleId, m_vf.handtype, _powers);
 }
 
 void PrimeIIDriver::start()
@@ -74,7 +89,7 @@ void PrimeIIDriver::join()
 
 std::vector<PrimeIIDriver::GloveData> PrimeIIDriver::getGlovesData()
 {
-  std::lock_guard<std::mutex> lck(m_DevicesData_mutex);
+  std::lock_guard<std::mutex> lck(m_DeviceData_mutex);
   return GlovesQueue;
 }
 
@@ -94,7 +109,7 @@ void PrimeIIDriver::update()
     ProcessLandscapeData();
 
     //process handle rumble
-    ProcessFingersVibrate();
+    //ProcessFingersVibrate();
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
@@ -152,12 +167,29 @@ void PrimeIIDriver::ProcessLandscapeData()
 
 void PrimeIIDriver::ProcessFingersVibrate()
 {
+  std::lock_guard<std::mutex> lck(m_FingersVibrate_mutex);
 
+  if (m_vf.sendFlage)
+  {
+    unsigned long long elapsedLastCmd_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - m_timeLastHapticsCmdSent).count();
+
+    if (elapsedLastCmd_ms < TIMEBETWEENHAPTICSCMDS_MS)
+    {
+      HermesSDK::VibrateFingers(m_vf.dongleId, m_vf.handtype, m_vf.powers);
+      m_vf.sendFlage = true;
+    }
+    else
+    {
+      m_vf.sendFlage = false;
+    }
+    //HermesSDK::VibrateFingers(m_vf.dongleId, m_vf.handtype, m_vf.powers);
+    //m_vf.sendFlage = false;
+  }
 }
 
 void PrimeIIDriver::ProcessDeviceData()
 {
-  std::lock_guard<std::mutex> lck(m_DevicesData_mutex);
+  std::lock_guard<std::mutex> lck(m_DeviceData_mutex);
 
   if (m_DevicesData.size_approx() == 0)
     return;
