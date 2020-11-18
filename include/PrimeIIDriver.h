@@ -18,7 +18,7 @@
 
 #define FINGERCOUNT           5
 #define JOINTPERFINGERCOUNT   3
-#define TIMEBETWEENHAPTICSCMDS_MS  20
+#define TIMEBETWEENHAPTICSCMDS_MS  200
 
 static const std::array<std::string, FINGERCOUNT> fingerNames = { "thumb", "index", "middle", "ring", "pinky" };
 static const std::array<std::string, JOINTPERFINGERCOUNT> fingerJointNames = { "mcp", "pip", "dip" };

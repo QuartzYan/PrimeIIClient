@@ -65,10 +65,10 @@ bool PrimeIIDriver::setVibrateFingers(uint32_t _dongleId, PrimeIIDriver::HandTyp
 
   m_timeLastHapticsCmdSent = std::chrono::high_resolution_clock::now();
 
-  //return true;
+  return true;
 
   //HermesSDK::VibrateWrist(1819774777, 0.5, 20);
-  return HermesSDK::VibrateFingers(_dongleId, m_vf.handtype, _powers);
+  //return HermesSDK::VibrateFingers(_dongleId, m_vf.handtype, _powers);
 }
 
 void PrimeIIDriver::start()
@@ -109,9 +109,9 @@ void PrimeIIDriver::update()
     ProcessLandscapeData();
 
     //process handle rumble
-    //ProcessFingersVibrate();
+    ProcessFingersVibrate();
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
 }
 
